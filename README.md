@@ -56,7 +56,7 @@ pip install requests bayesian-optimization
 3. **Optimierung starten**:
    Führen Sie das Skript aus. Die Optimierung beginnt mit zufälligen Initialisierungspunkten und verfeinert die Parameter in mehreren Iterationen:
    ```bash
-   python optimize_parameters.py
+   python parameter-finder.py
    ```
 
 4. **Ergebnisse überprüfen**:
