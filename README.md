@@ -1,6 +1,6 @@
-# Parameter-Finder für EvaGPT-German
+# Parameter-Finder für KI-Modelle
 
-Dieses Projekt dient der Optimierung von Parametern für das Modell **EvaGPT-German**. Mithilfe von **Bayesian Optimization** wird die bestmögliche Kombination der Modellparameter (`temperature`, `top_p`, `frequency_penalty`, `presence_penalty`) ermittelt, um die gewünschte Ausgabequalität zu erzielen. 
+Dieses Projekt dient der Optimierung von Parametern für generative Sprachmodelle wie **EvaGPT-German**, **LLama** oder andere LLMs (Large Language Models). Mithilfe von **Bayesian Optimization** wird die bestmögliche Kombination der Modellparameter (`temperature`, `top_p`, `frequency_penalty`, `presence_penalty`) ermittelt, um die Ausgabequalität zu verbessern. 
 
 ## Funktionen und Aufbau
 
@@ -19,7 +19,7 @@ Das Skript kommuniziert über eine REST-API mit dem Modell und verwendet das Bay
 - Die Optimierung wird durch **BayesianOptimization** durchgeführt, das die Parameter iterativ anpasst, um die Ähnlichkeit zu maximieren.
 
 ### 4. **Endpunkt und API**
-Das Modell wird über einen lokalen API-Endpunkt angesprochen:
+Das Modell wird über einen lokalen oder entfernten API-Endpunkt angesprochen. Standardmäßig ist der lokale Endpunkt:
 ```
 http://localhost:11434/v1/chat/completions
 ```
@@ -30,6 +30,8 @@ Die Konfiguration des Headers:
     "Content-Type": "application/json"
 }
 ```
+
+Falls ein anderer Endpunkt verwendet wird, kann die URL im Code angepasst werden.
 
 ## Anforderungen
 
@@ -69,3 +71,9 @@ pip install requests bayesian-optimization
 ## Ergebnisse
 
 Das Skript zeigt die Modellantwort, die berechnete Ähnlichkeit und die Optimierungsergebnisse. Diese können verwendet werden, um das Modell weiter zu verbessern und an spezifische Anwendungsfälle anzupassen.
+
+## Anwendungsfälle
+
+- **Generative Sprachmodelle:** Optimierung der Parameter für feinjustierte Antworten.
+- **Experimentelles Finetuning:** Bestimmen der optimalen Parameter nach einem Finetuning-Prozess.
+- **Vielfältige Modelle:** Unterstützung für beliebige Sprachmodelle, die über eine REST-API angesprochen werden können, wie **LLama**, **OpenAI GPT**, **Falcon**, **BLOOM** und mehr.
