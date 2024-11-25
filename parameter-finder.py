@@ -2,6 +2,9 @@ import requests
 import json
 from bayes_opt import BayesianOptimization
 from difflib import SequenceMatcher
+import time
+from tenacity import retry, stop_after_attempt, wait_fixed
+import math  # Für die Rundung von top_k
 
 # API-Endpunkt und Header
 api_url = "http://localhost:11434/v1/chat/completions"
@@ -9,35 +12,31 @@ headers = {
     "Content-Type": "application/json",
 }
 
-# System-Prompt hinzufügen
-system_prompt = """
-Du bist EvaGPT-German, eine leistungsstarke, datenschutzorientierte KI, die speziell für die deutsche Sprache entwickelt wurde. Dein Hauptfokus liegt darauf, Nutzern ohne Internetverbindung bestmögliche Unterstützung zu bieten. Deine Antworten sollen präzise, höflich und hilfreich sein.
-
-Richtlinien:
-
-    1. Datenverarbeitung: Du arbeitest ohne externe Verbindungen oder Internetzugriff. Alle Berechnungen und Antworten basieren auf lokal verfügbaren Daten und Modellen.
-    2. Privatsphäre: Du respektierst die Privatsphäre der Benutzer und sammelst keine persönlichen Daten. Sensible Informationen werden niemals weitergegeben oder gespeichert.
-    3. Sprache: Deine Antworten sollen in klarer, verständlicher deutscher Sprache formuliert sein. Verwende eine formale, aber zugängliche Ansprache, es sei denn, der Benutzer wünscht eine informellere Kommunikation.
-    4. Kontextverstehen: Du behältst den Kontext früherer Interaktionen im Hinterkopf, um präzisere Antworten zu liefern. Sei jedoch achtsam und gebe niemals unnötige Details aus früheren Gesprächen preis, es sei denn, es ist ausdrücklich gewünscht.
-    5. Zielgerichtete Unterstützung: Dein Ziel ist es, dem Benutzer bei technischen und alltäglichen Aufgaben zu helfen, komplexe Sachverhalte zu erklären und bei der Entwicklung von Software, insbesondere cloudbasierten Anwendungen und KI-Projekten, zu unterstützen.
-    6. Fehlerhandling: Wenn du eine Anfrage nicht vollständig verstehst oder die Antwort außerhalb deines Wissensbereichs liegt, signalisiere dies höflich und versuche, dem Benutzer hilfreiche Alternativen oder allgemeine Informationen zu bieten.
-    7. Modularität: Du bist anpassungsfähig und lernfähig, basierend auf lokal bereitgestellten Daten, um die Bedürfnisse des Benutzers bestmöglich zu erfüllen.
-"""
-
-# Eingabeprompt und gewünschte Musterantwort
-input_prompt = "Geben Sie eine kurze Beschreibung von Python."
-desired_output = "Python ist eine interpretierte, vielseitige und leicht zu erlernende Programmiersprache, die für ihre klare Syntax und Lesbarkeit bekannt ist. Sie unterstützt verschiedene Programmierparadigmen wie objektorientierte, prozedurale und funktionale Programmierung. Python wird häufig in Bereichen wie Webentwicklung, Datenanalyse, maschinellem Lernen, Automatisierung und wissenschaftlichem Rechnen eingesetzt. Dank einer großen Standardbibliothek und einer aktiven Community bietet Python leistungsstarke Tools für unterschiedlichste Anwendungsgebiete."
+# Platzhalter für die Prompts
+system_prompt = """[Ihr System-Prompt hier]"""
+input_prompt = """[Ihr Eingabe-Prompt hier]"""
+desired_output = """[Ihre gewünschte Ausgabe hier]"""
 
 # Funktion zur Berechnung der Ähnlichkeit zwischen zwei Texten
 def compute_similarity(a, b):
+    """Berechnet die Ähnlichkeit zwischen zwei Texten."""
     return SequenceMatcher(None, a, b).ratio()
 
+@retry(stop=stop_after_attempt(3), wait=wait_fixed(5))
+def make_request(data):
+    response = requests.post(api_url, headers=headers, data=json.dumps(data), timeout=60)
+    response.raise_for_status()
+    return response.json()
+
 # Funktion, die die Ausgabe mit der gewünschten Antwort vergleicht und eine Ähnlichkeitsmetrik zurückgibt
-def evaluate_model(temperature, top_p, frequency_penalty, presence_penalty):
-    temperature = max(min(temperature, 1), 0)  # Begrenzung auf [0,1]
-    top_p = max(min(top_p, 1), 0)
-    frequency_penalty = max(min(frequency_penalty, 2), -2)  # Begrenzung auf [-2,2]
-    presence_penalty = max(min(presence_penalty, 2), -2)
+def evaluate_model(temperature, top_p, frequency_penalty, presence_penalty, top_k):
+    """Evaluiert das Modell mit den gegebenen Parametern und berechnet die Ähnlichkeit zur gewünschten Ausgabe."""
+    # Begrenzung der Parameter auf die erlaubten Bereiche
+    temperature = max(min(temperature, 0.9), 0.1)
+    top_p = max(min(top_p, 0.9), 0.1)
+    frequency_penalty = max(min(frequency_penalty, 1.0), -1.0)
+    presence_penalty = max(min(presence_penalty, 1.0), -1.0)
+    top_k = int(max(min(top_k, 100), 1))  # top_k muss eine ganze Zahl sein
 
     data = {
         "model": "EVA-GPT-Version6.1",
@@ -45,46 +44,59 @@ def evaluate_model(temperature, top_p, frequency_penalty, presence_penalty):
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": input_prompt}
         ],
-        "max_tokens": 500,  # Erhöht, um längere Antworten zu ermöglichen
+        "max_tokens": 700,
         "temperature": temperature,
         "top_p": top_p,
         "frequency_penalty": frequency_penalty,
-        "presence_penalty": presence_penalty
+        "presence_penalty": presence_penalty,
+        "top_k": top_k  # Neu hinzugefügt
     }
 
-    response = requests.post(api_url, headers=headers, data=json.dumps(data))
-    if response.status_code == 200:
-        response_data = response.json()
-        output = response_data['choices'][0]['message']['content'].strip()
+    try:
+        start_time = time.time()
+        response_data = make_request(data)
+        end_time = time.time()
+        print(f"Antwortzeit: {end_time - start_time} Sekunden")
 
-        # Berechnung der Ähnlichkeit mit der gewünschten Ausgabe
-        similarity = compute_similarity(output, desired_output)
-        print(f"Ausgabe: {output}\nÄhnlichkeit: {similarity}\n")
-        return similarity
-    else:
-        print(f"Fehler bei der Anfrage: {response.status_code}")
-        return 0  # Schlechte Ähnlichkeit bei Fehler
+        if 'choices' in response_data and response_data['choices']:
+            output = response_data['choices'][0]['message']['content'].strip()
+            if not output:
+                print("Die Ausgabe ist leer.")
+                return 0
+            # Berechnung der Ähnlichkeit mit der gewünschten Ausgabe
+            similarity = compute_similarity(output, desired_output)
+            print(f"Parameter: temperature={temperature}, top_p={top_p}, frequency_penalty={frequency_penalty}, presence_penalty={presence_penalty}, top_k={top_k}")
+            print(f"Ausgabe: {output}\nÄhnlichkeit: {similarity}\n")
+            return similarity
+        else:
+            print("Die Antwort enthält keine gültigen 'choices'.")
+            print(f"API-Antwort: {response_data}")
+            return 0
+    except Exception as e:
+        print(f"Fehler bei der Anfrage: {e}")
+        return 0
 
-# Definieren Sie den Parameterbereich für die Optimierung
+# Definieren Sie den angepassten Parameterbereich für die Optimierung
 pbounds = {
-    'temperature': (0.0, 1.0),
-    'top_p': (0.0, 1.0),
-    'frequency_penalty': (-2.0, 2.0),
-    'presence_penalty': (-2.0, 2.0)
+    'temperature': (0.1, 0.9),
+    'top_p': (0.1, 0.9),
+    'frequency_penalty': (-1.0, 1.0),
+    'presence_penalty': (-1.0, 1.0),
+    'top_k': (1, 100)  # Neu hinzugefügt
 }
 
 # Initialisieren Sie den Optimierer
 optimizer = BayesianOptimization(
     f=evaluate_model,
     pbounds=pbounds,
-    verbose=2,  # 0 = nichts ausgeben, 1 = minimal, 2 = alles
+    verbose=2,
     random_state=1,
 )
 
 # Starten Sie die Optimierung
 optimizer.maximize(
-    init_points=5,  # Anzahl der zufälligen Initialisierungspunkte
-    n_iter=25,      # Anzahl der Optimierungsschritte
+    init_points=5,
+    n_iter=25,
 )
 
 # Nach Abschluss der Optimierung die besten Parameter ausgeben
